@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pkl
+*.pickle
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data files (данные большие)
+*.pkl
+*.csv
+*.xlsx
+
+# IDE
+.vscode/
+.idea/

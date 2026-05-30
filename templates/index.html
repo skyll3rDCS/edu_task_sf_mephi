@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СберАвтоподписка - Система прогнозирования конверсии</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>СберАвтоподписка</h1>
+            <p class="subtitle">Система прогнозирования вероятности целевого действия</p>
+            <div class="model-status">
+                Статус модели: 
+                {% if model_status %}
+                    <span class="status-active">Активна</span>
+                {% else %}
+                    <span class="status-inactive">Недоступна</span>
+                {% endif %}
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="input-panel">
+                <h2>Параметры визита</h2>
+                
+                <form id="prediction-form">
+                    <div class="form-section">
+                        <h3>Временные характеристики</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="visit_number">Номер визита</label>
+                                <input type="number" id="visit_number" name="visit_number" value="1" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="visit_hour">Час визита (0-23)</label>
+                                <input type="number" id="visit_hour" name="visit_hour" value="14" min="0" max="23">
+                            </div>
+                            <div class="form-group">
+                                <label for="visit_dayofweek">День недели (0-6, Пн=0)</label>
+                                <input type="number" id="visit_dayofweek" name="visit_dayofweek" value="3" min="0" max="6">
+                            </div>
+                            <div class="form-group">
+                                <label for="visit_month">Месяц (1-12)</label>
+                                <input type="number" id="visit_month" name="visit_month" value="6" min="1" max="12">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Поведенческие метрики</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="total_hits">Количество событий</label>
+                                <input type="number" id="total_hits" name="total_hits" value="25" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="unique_pages">Уникальные страницы</label>
+                                <input type="number" id="unique_pages" name="unique_pages" value="8" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="car_page_views">Просмотры автомобилей</label>
+                                <input type="number" id="car_page_views" name="car_page_views" value="3" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="form_interactions">Взаимодействие с формами</label>
+                                <input type="number" id="form_interactions" name="form_interactions" value="2" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="session_duration_sec">Длительность сессии (сек)</label>
+                                <input type="number" id="session_duration_sec" name="session_duration_sec" value="180" min="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Устройство и трафик</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="device_category">Тип устройства</label>
+                                <select id="device_category" name="device_category">
+                                    <option value="desktop">Десктоп</option>
+                                    <option value="mobile">Мобильное устройство</option>
+                                    <option value="tablet">Планшет</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="screen_width">Ширина экрана (px)</label>
+                                <input type="number" id="screen_width" name="screen_width" value="1920" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="screen_height">Высота экрана (px)</label>
+                                <input type="number" id="screen_height" name="screen_height" value="1080" min="0">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group checkbox">
+                                <label>
+                                    <input type="checkbox" id="is_organic" name="is_organic">
+                                    Органический трафик
+                                </label>
+                            </div>
+                            <div class="form-group checkbox">
+                                <label>
+                                    <input type="checkbox" id="is_social" name="is_social">
+                                    Социальные сети
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" id="predict-btn" class="btn-primary">Выполнить прогноз</button>
+                        <button type="button" id="reset-btn" class="btn-secondary">Сбросить параметры</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="result-panel">
+                <h2>Результат прогнозирования</h2>
+                <div id="result-container" class="result-container">
+                    <div class="result-placeholder">
+                        Заполните параметры и нажмите "Выполнить прогноз"
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="api-info">
+            <h3>API-эндпоинты</h3>
+            <ul>
+                <li><code>POST /predict</code> - Получение предсказания (JSON)</li>
+                <li><code>GET /health</code> - Проверка состояния сервиса</li>
+                <li><code>GET /features</code> - Список признаков модели</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const predictBtn = document.getElementById('predict-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const resultContainer = document.getElementById('result-container');
+
+        function collectFormData() {
+            return {
+                visit_number: parseInt(document.getElementById('visit_number').value) || 1,
+                visit_hour: parseInt(document.getElementById('visit_hour').value) || 12,
+                visit_dayofweek: parseInt(document.getElementById('visit_dayofweek').value) || 3,
+                visit_month: parseInt(document.getElementById('visit_month').value) || 6,
+                total_hits: parseInt(document.getElementById('total_hits').value) || 0,
+                unique_pages: parseInt(document.getElementById('unique_pages').value) || 0,
+                car_page_views: parseInt(document.getElementById('car_page_views').value) || 0,
+                form_interactions: parseInt(document.getElementById('form_interactions').value) || 0,
+                session_duration_sec: parseInt(document.getElementById('session_duration_sec').value) || 0,
+                screen_width: parseInt(document.getElementById('screen_width').value) || 0,
+                screen_height: parseInt(document.getElementById('screen_height').value) || 0,
+                device_category: document.getElementById('device_category').value,
+                is_organic: document.getElementById('is_organic').checked,
+                is_social: document.getElementById('is_social').checked
+            };
+        }
+
+        function resetForm() {
+            document.getElementById('visit_number').value = '1';
+            document.getElementById('visit_hour').value = '14';
+            document.getElementById('visit_dayofweek').value = '3';
+            document.getElementById('visit_month').value = '6';
+            document.getElementById('total_hits').value = '25';
+            document.getElementById('unique_pages').value = '8';
+            document.getElementById('car_page_views').value = '3';
+            document.getElementById('form_interactions').value = '2';
+            document.getElementById('session_duration_sec').value = '180';
+            document.getElementById('screen_width').value = '1920';
+            document.getElementById('screen_height').value = '1080';
+            document.getElementById('device_category').value = 'desktop';
+            document.getElementById('is_organic').checked = false;
+            document.getElementById('is_social').checked = false;
+        }
+
+        async function makePrediction() {
+            const formData = collectFormData();
+            
+            resultContainer.innerHTML = '<div class="loading">Обработка запроса...</div>';
+            
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const probabilityPercent = (result.probability * 100).toFixed(1);
+                    let convClass = '';
+                    let convText = '';
+                    
+                    // Используем conversion_level из app.py
+                    if (result.conversion_level === 'high') {
+                        convClass = 'conv-high';
+                        convText = 'Высокая';
+                    } else if (result.conversion_level === 'medium') {
+                        convClass = 'conv-medium';
+                        convText = 'Средняя';
+                    } else {
+                        convClass = 'conv-low';
+                        convText = 'Низкая';
+                    }
+                    
+                    // Рекомендации в зависимости от вероятности
+                    let recommendation = '';
+                    if (result.conversion_level === 'high') {
+                        recommendation = 'Рекомендация: Показать специальное предложение, активировать быструю обработку заявки';
+                    } else if (result.conversion_level === 'medium') {
+                        recommendation = 'Рекомендация: Предложить помощь оператора, показать преимущества подписки';
+                    } else {
+                        recommendation = 'Рекомендация: Улучшить вовлечение, предложить бонус или демо-версию';
+                    }
+                    
+                    resultContainer.innerHTML = `
+                        <div class="result-card ${convClass}">
+                            <div class="probability-value">${probabilityPercent}%</div>
+                            <div class="probability-label">Вероятность конверсии</div>
+                            <div class="risk-badge">${convText} вероятность</div>
+                            <div class="prediction-class">
+                                Прогнозируемый класс: 
+                                <strong>${result.predicted_class === 1 ? 'Конверсия' : 'Отсутствие конверсии'}</strong>
+                            </div>
+                            <div class="recommendation">
+                                ${recommendation}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    resultContainer.innerHTML = `
+                        <div class="result-error">
+                            <strong>Ошибка:</strong> ${result.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultContainer.innerHTML = `
+                    <div class="result-error">
+                        <strong>Ошибка соединения:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        predictBtn.addEventListener('click', makePrediction);
+        resetBtn.addEventListener('click', resetForm);
+    </script>
+</body>
+</html>
